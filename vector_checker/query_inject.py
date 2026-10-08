@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Sequence
+
+import pandas as pd
+
+# Пробелы/тонкие пробелы как разделители тысяч в выгрузках 1С (в т.ч. \xa0).
+_THOUSAND_SEP_RE = re.compile(r"[\s\u00a0\u202f\u2009'`]+")
 
 # Маркеры шаблона с одним параметром &Убыток (как в queries/Сутяжность.txt).
 _FIRST_FILTER = "Убыток.Ссылка = &Убыток"
@@ -32,6 +38,32 @@ def read_query_text(path: Path) -> tuple[str, str]:
     raise ValueError(f"Не удалось декодировать запрос: {path}")
 
 
+def normalize_loss_number(value: object) -> str:
+    """Нормализовать LOSS_NUMBER: ``8513115.0`` / ``8\\xa0513\\xa0115`` → ``8513115``."""
+    if value is None or (not isinstance(value, (list, dict, set)) and pd.isna(value)):
+        return ""
+    if isinstance(value, bool):
+        return str(int(value))
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return str(value).strip()
+
+    text = _THOUSAND_SEP_RE.sub("", str(value).strip())
+    if not text or text.lower() in {"nan", "none", "null"}:
+        return ""
+    text = text.replace(",", ".")
+    try:
+        num = float(text)
+        if num.is_integer():
+            return str(int(num))
+        return str(num)
+    except ValueError:
+        return text
+
+
 def format_loss_literals(
     loss_numbers: Sequence[object],
     *,
@@ -40,10 +72,8 @@ def format_loss_literals(
     """Список литералов для конструкции ``В (...)`` в языке запросов 1С."""
     parts: list[str] = []
     for value in loss_numbers:
-        if value is None:
-            continue
-        text = str(value).strip()
-        if not text or text.lower() == "nan":
+        text = normalize_loss_number(value)
+        if not text:
             continue
         if as_strings:
             escaped = text.replace('"', '""')
@@ -179,10 +209,8 @@ def unique_loss_numbers(values: Iterable[object]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
     for value in values:
-        if value is None:
-            continue
-        text = str(value).strip()
-        if not text or text.lower() == "nan" or text in seen:
+        text = normalize_loss_number(value)
+        if not text or text in seen:
             continue
         seen.add(text)
         result.append(text)

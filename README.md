@@ -40,10 +40,10 @@ Env (опционально): `VECTOR_CHECKER_DF_PATH`, `VECTOR_CHECKER_QUERY_PA
 
 `notebooks/vector_checker.ipynb` — полный цикл без CLI:
 
-1. Конфиг: `USE_SYNTHETIC=False`, `QUERY_PATH`, `DF_PATH`
+1. Конфиг: `USE_SYNTHETIC=False`, `QUERY_PATH`, `DF_PATH`, `EXCEL_NAME`
 2. Prepare → `work/query_for_1c.txt` (Excel ещё не нужен)
-3. Выполнить запрос в 1С → Excel в `work/excel/`
-4. Compare и разбор расхождений
+3. Выполнить запрос в 1С → Excel в `work/excel/` (например `result.xlsx`)
+4. Compare: по умолчанию только общие с Excel колонки (вектор модели); явный список — `FEATURES=[...]`
 
 ## Структура
 

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from .paths import DEFAULT_FEATURES, KEY_COL, PRED_COLS
+from .query_inject import normalize_loss_number
 
 
 @dataclass
@@ -36,7 +37,7 @@ class CompareReport:
 
 
 def _normalize_loss_key(series: pd.Series) -> pd.Series:
-    return series.map(lambda x: str(x).strip() if pd.notna(x) else "")
+    return series.map(normalize_loss_number)
 
 
 def _normalize_value(value: object) -> object:
