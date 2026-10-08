@@ -2,6 +2,7 @@
 
 ## 2026-10-08
 
+- Сводка по колонкам: `feature_match_stats` — `n_match` / `n_mismatch` / `match_pct` (csv в `work/reports/`).
 - Расхождения в ноутбуке: `paired_compare_frame` — 2 строки на `LOSS_NUMBER` (service/excel), только отличающиеся колонки; long-таблица больше не выводится целиком (пишется в `work/reports/`).
 - Нормализация `LOSS_NUMBER`: `8513115.0` и `8\xa0513\xa0115` (пробелы 1С) → один ключ; иначе Excel после фильтра давал 0 строк.
 - Ноутбук: `EXCEL_NAME=result.xlsx`; сверка по пересечению с колонками Excel (вектор модели), не по всем 360 колонкам датасета; опция `FEATURES`.

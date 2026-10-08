@@ -244,7 +244,7 @@ def report_to_frame(report: CompareReport) -> pd.DataFrame:
 
 
 def mismatch_feature_counts(mismatches: pd.DataFrame) -> pd.DataFrame:
-    """Сколько раз каждая фича расходится."""
+    """Сколько раз каждая фича расходится (без процентов)."""
     if mismatches.empty:
         return pd.DataFrame(columns=["feature", "n_mismatch"])
     return (
@@ -252,6 +252,46 @@ def mismatch_feature_counts(mismatches: pd.DataFrame) -> pd.DataFrame:
         .size()
         .rename(columns={"size": "n_mismatch"})
         .sort_values("n_mismatch", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def feature_match_stats(
+    mismatches: pd.DataFrame,
+    *,
+    features: Sequence[str],
+    n_keys: int,
+) -> pd.DataFrame:
+    """По каждой колонке: совпадения / расхождения и ``match_pct`` среди общих ключей."""
+    if n_keys < 0:
+        raise ValueError(f"n_keys должно быть >= 0, получено {n_keys}")
+
+    counts: dict[str, int] = {}
+    if not mismatches.empty and "feature" in mismatches.columns:
+        counts = mismatches.groupby("feature").size().astype(int).to_dict()
+
+    rows: list[dict] = []
+    for feat in features:
+        n_mismatch = int(counts.get(feat, 0))
+        n_match = max(n_keys - n_mismatch, 0)
+        match_pct = round(100.0 * n_match / n_keys, 2) if n_keys else float("nan")
+        rows.append(
+            {
+                "feature": feat,
+                "n_keys": n_keys,
+                "n_match": n_match,
+                "n_mismatch": n_mismatch,
+                "match_pct": match_pct,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(
+            columns=["feature", "n_keys", "n_match", "n_mismatch", "match_pct"]
+        )
+    return (
+        pd.DataFrame(rows)
+        .sort_values(["match_pct", "n_mismatch", "feature"], ascending=[True, False, True])
         .reset_index(drop=True)
     )
 
