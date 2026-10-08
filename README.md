@@ -38,7 +38,12 @@ Env (опционально): `VECTOR_CHECKER_DF_PATH`, `VECTOR_CHECKER_QUERY_PA
 
 ## Ноутбук
 
-`notebooks/vector_checker.ipynb` — в конфиге задай `QUERY_PATH` и `DF_PATH`.
+`notebooks/vector_checker.ipynb` — полный цикл без CLI:
+
+1. Конфиг: `USE_SYNTHETIC=False`, `QUERY_PATH`, `DF_PATH`
+2. Prepare → `work/query_for_1c.txt` (Excel ещё не нужен)
+3. Выполнить запрос в 1С → Excel в `work/excel/`
+4. Compare и разбор расхождений
 
 ## Структура
 
