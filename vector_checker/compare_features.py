@@ -206,8 +206,9 @@ def write_compare_artifacts(
     mismatches: pd.DataFrame,
     reports_dir: Path,
     stem: str = "vector_compare",
+    paired: pd.DataFrame | None = None,
 ) -> tuple[Path, Path]:
-    """Записать JSON-отчёт и CSV с расхождениями."""
+    """Записать JSON-отчёт и CSV с расхождениями (long + опционально paired)."""
     reports_dir.mkdir(parents=True, exist_ok=True)
     json_path = reports_dir / f"{stem}.json"
     csv_path = reports_dir / f"{stem}_mismatches.csv"
@@ -216,6 +217,9 @@ def write_compare_artifacts(
         encoding="utf-8",
     )
     mismatches.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    if paired is not None:
+        paired_path = reports_dir / f"{stem}_paired.csv"
+        paired.to_csv(paired_path, index=False, encoding="utf-8-sig")
     return json_path, csv_path
 
 
@@ -252,6 +256,99 @@ def mismatch_feature_counts(mismatches: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def mismatched_keys(mismatches: pd.DataFrame, key_col: str = KEY_COL) -> list[str]:
+    """Уникальные ключи, у которых есть хотя бы одно расхождение."""
+    if mismatches.empty or key_col not in mismatches.columns:
+        return []
+    return (
+        mismatches[key_col]
+        .map(normalize_loss_number)
+        .loc[lambda s: s != ""]
+        .drop_duplicates()
+        .tolist()
+    )
+
+
+def paired_compare_frame(
+    service_df: pd.DataFrame,
+    excel_df: pd.DataFrame,
+    *,
+    keys: Sequence[object] | None = None,
+    features: Sequence[str] | None = None,
+    mismatches: pd.DataFrame | None = None,
+    only_mismatch_cols: bool = True,
+    key_col: str = KEY_COL,
+    source_col: str = "source",
+) -> pd.DataFrame:
+    """Две строки на ключ: ``source=service|excel``, колонки = фичи.
+
+    Так удобно сравнивать один ``LOSS_NUMBER`` фильтром по ключу, без
+    long-таблицы «фича × убыток» (которая на больших N убивает ноутбук).
+    """
+    left = service_df.copy()
+    right = excel_df.copy()
+    left["_key"] = _normalize_loss_key(left[key_col])
+    right["_key"] = _normalize_loss_key(right[key_col])
+
+    if keys is None:
+        if mismatches is not None and not mismatches.empty:
+            key_list = mismatched_keys(mismatches, key_col=key_col)
+        else:
+            key_list = sorted(set(left["_key"]) & set(right["_key"]) - {""})
+    else:
+        key_list = [normalize_loss_number(k) for k in keys]
+        key_list = [k for k in key_list if k]
+
+    cols, _, _ = resolve_feature_columns(
+        service_df,
+        excel_df,
+        features=features,
+        all_overlap=features is None,
+        key_col=key_col,
+    )
+
+    mismatch_cols_by_key: dict[str, set[str]] = {}
+    if only_mismatch_cols and mismatches is not None and not mismatches.empty:
+        tmp = mismatches.copy()
+        tmp["_key"] = tmp[key_col].map(normalize_loss_number)
+        for key, grp in tmp.groupby("_key"):
+            mismatch_cols_by_key[str(key)] = set(grp["feature"].astype(str))
+
+    blocks: list[pd.DataFrame] = []
+    for key in key_list:
+        left_row = left.loc[left["_key"] == key]
+        right_row = right.loc[right["_key"] == key]
+        if left_row.empty and right_row.empty:
+            continue
+
+        if only_mismatch_cols and key in mismatch_cols_by_key:
+            use_cols = [c for c in cols if c in mismatch_cols_by_key[key]]
+        elif only_mismatch_cols and mismatches is not None:
+            # ключ без записей в mismatches — пропускаем
+            continue
+        else:
+            use_cols = list(cols)
+        if not use_cols:
+            continue
+
+        def _one(row_df: pd.DataFrame, source: str) -> dict:
+            out: dict = {key_col: key, source_col: source}
+            if row_df.empty:
+                for c in use_cols:
+                    out[c] = None
+                return out
+            row = row_df.iloc[0]
+            for c in use_cols:
+                out[c] = row[c] if c in row_df.columns else None
+            return out
+
+        blocks.append(pd.DataFrame([_one(left_row, "service"), _one(right_row, "excel")]))
+
+    if not blocks:
+        return pd.DataFrame(columns=[key_col, source_col, *cols])
+    return pd.concat(blocks, ignore_index=True)
+
+
 def side_by_side_for_loss(
     service_df: pd.DataFrame,
     excel_df: pd.DataFrame,
@@ -260,8 +357,8 @@ def side_by_side_for_loss(
     *,
     key_col: str = KEY_COL,
 ) -> pd.DataFrame:
-    """По одному ключу: фича | service | excel | match."""
-    key = str(loss_number).strip()
+    """По одному ключу: фича | service | excel | match (для точечного разбора)."""
+    key = normalize_loss_number(loss_number)
     left = service_df.copy()
     right = excel_df.copy()
     left["_key"] = _normalize_loss_key(left[key_col])
