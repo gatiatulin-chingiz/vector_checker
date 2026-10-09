@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Sequence
@@ -12,6 +13,17 @@ import pandas as pd
 
 from .paths import DEFAULT_FEATURES, KEY_COL, PRED_COLS
 from .query_inject import normalize_loss_number
+
+# Разделители тысяч в выгрузках 1С / Excel (в т.ч. NBSP).
+_THOUSAND_SEP_RE = re.compile(r"[\s\u00a0\u202f\u2009'`]+")
+_DATE_FORMATS = (
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d",
+    "%d.%m.%Y %H:%M:%S",
+    "%d.%m.%Y %H:%M",
+    "%d.%m.%Y",
+)
 
 
 @dataclass
@@ -40,6 +52,62 @@ def _normalize_loss_key(series: pd.Series) -> pd.Series:
     return series.map(normalize_loss_number)
 
 
+def _try_parse_number(text: str) -> int | float | None:
+    """Число из текста 1С: ``8 513 115``, ``42 120,00``, ``1,6``."""
+    compact = _THOUSAND_SEP_RE.sub("", text.strip())
+    if not compact:
+        return None
+    compact = compact.replace(",", ".")
+    try:
+        num = float(compact)
+    except ValueError:
+        return None
+    if num.is_integer():
+        return int(num)
+    return num
+
+
+def _try_parse_datetime(text: str) -> str | None:
+    """Дата/время → ISO ``YYYY-MM-DDTHH:MM:SS`` (день без времени → 00:00:00)."""
+    raw = text.strip()
+    if not raw:
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            ts = pd.Timestamp(pd.to_datetime(raw, format=fmt))
+        except (ValueError, TypeError):
+            continue
+        if pd.isna(ts):
+            continue
+        return ts.isoformat(sep="T", timespec="seconds")
+    try:
+        ts = pd.Timestamp(pd.to_datetime(raw, dayfirst=True))
+    except (ValueError, TypeError):
+        return None
+    if pd.isna(ts):
+        return None
+    return ts.isoformat(sep="T", timespec="seconds")
+
+
+def _normalize_string(text: str) -> object:
+    """Строка / число / дата из текстового значения Excel (флаги и текст — как есть)."""
+    stripped = text.strip()
+    if not stripped or stripped.lower() in {"nan", "none", "null"}:
+        return None
+
+    num = _try_parse_number(stripped)
+    if num is not None:
+        return num
+
+    # Дата только если похоже на дату (цифры + разделители), не любой текст.
+    if any(ch.isdigit() for ch in stripped) and any(ch in stripped for ch in ".-/:T "):
+        dt = _try_parse_datetime(stripped)
+        if dt is not None:
+            return dt
+
+    return stripped
+
+
 def _normalize_value(value: object) -> object:
     """Привести значение к сопоставимому виду для 1:1 сверки."""
     if value is None or (isinstance(value, float) and np.isnan(value)):
@@ -59,16 +127,7 @@ def _normalize_value(value: object) -> object:
         if float(value).is_integer():
             return int(value)
         return float(value)
-    text = str(value).strip()
-    if text == "" or text.lower() in {"nan", "none", "null"}:
-        return None
-    try:
-        num = float(text.replace(",", "."))
-        if num.is_integer():
-            return int(num)
-        return num
-    except ValueError:
-        return text
+    return _normalize_string(str(value))
 
 
 def _values_equal(left: object, right: object, *, rtol: float = 0.0) -> bool:

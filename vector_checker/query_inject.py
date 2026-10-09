@@ -67,9 +67,13 @@ def normalize_loss_number(value: object) -> str:
 def format_loss_literals(
     loss_numbers: Sequence[object],
     *,
-    as_strings: bool = True,
+    as_strings: bool = False,
 ) -> str:
-    """Список литералов для конструкции ``В (...)`` в языке запросов 1С."""
+    """Список литералов для ``В (...)`` в 1С.
+
+    По умолчанию числа без кавычек (``8513115``) — так работает фильтр
+    ``Убыток.Номер``. ``as_strings=True`` даёт ``\"8513115\"``.
+    """
     parts: list[str] = []
     for value in loss_numbers:
         text = normalize_loss_number(value)
@@ -89,7 +93,7 @@ def inject_loss_numbers(
     query_text: str,
     loss_numbers: Sequence[object],
     *,
-    as_strings: bool = True,
+    as_strings: bool = False,
 ) -> str:
     """Заменить единственный ``&Убыток`` на фильтр по номерам + ``В (втУбыток)``."""
     literals = format_loss_literals(loss_numbers, as_strings=as_strings)
@@ -148,7 +152,7 @@ def write_injected_query(
     out_path: Path,
     *,
     source_df: Path | None = None,
-    as_strings: bool = True,
+    as_strings: bool = False,
     encoding_out: str | None = None,
     n_total: int | None = None,
     random_seed: int | None = None,

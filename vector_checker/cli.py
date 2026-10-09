@@ -63,7 +63,7 @@ def _cmd_prepare(args: argparse.Namespace) -> int:
         losses,
         out_path,
         source_df=df_path,
-        as_strings=not args.as_numbers,
+        as_strings=args.as_strings,
         n_total=len(all_losses),
         random_seed=seed if n is not None else None,
     )
@@ -156,7 +156,7 @@ def _cmd_demo(args: argparse.Namespace) -> int:
         losses,
         query_out,
         source_df=paths["df"],
-        as_strings=True,
+        as_strings=False,
         n_total=len(all_losses),
         random_seed=seed,
     )
@@ -175,6 +175,10 @@ def _cmd_demo(args: argparse.Namespace) -> int:
         return 1
     if "Убыток.Номер В (" not in injected:
         print("FAIL: не найдена подстановка Убыток.Номер В (...)")
+        return 1
+    # номера без кавычек: В (123, 456), не В ("123", "456")
+    if 'Убыток.Номер В ("' in injected:
+        print("FAIL: номера подставлены как строки, нужны int")
         return 1
     print(f"prepare demo   : {query_out} ({len(losses)}/{len(all_losses)} keys, seed={seed})")
 
@@ -228,7 +232,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_prep.add_argument("--seed", type=int, default=42, help="random_seed")
     p_prep.add_argument("--limit", type=int, default=None, help="алиас для --n")
     p_prep.add_argument("--sample-meta", default=str(DEFAULT_SAMPLE_META))
-    p_prep.add_argument("--as-numbers", action="store_true")
+    p_prep.add_argument(
+        "--as-strings",
+        action="store_true",
+        help="Подставлять номера в кавычках (по умолчанию int без кавычек)",
+    )
     p_prep.set_defaults(func=_cmd_prepare)
 
     p_cmp = sub.add_parser("compare", help="Сверить Excel 1С с датасетом")
